@@ -14,12 +14,42 @@ import (
 //go:embed workflow_tool.txt
 var workflowToolDoc string
 
+// config is the JSON shape this plugin accepts from the host's
+// `plugins.<name>.config:` block. All fields are optional.
+type config struct {
+	// DatalevinURL points at a Datalevin HTTP server. When set, the
+	// plugin uses talon.Run (full language: workflow + detect + queries
+	// + ML primitives). When empty, only workflow-only programs run
+	// via talon.RunWorkflow — detect-bearing programs return
+	// ErrRequiresFactStore from the SDK.
+	DatalevinURL string `json:"datalevin_url"`
+}
+
 // handler implements pkg/plugin.StreamingHandler. The plugin advertises
 // SupportsCallbacks=true so the host dispatches over the bidirectional
 // ExecuteBidi stream and passes a live HostCaller — that's how every
-// MCP step inside a Talon workflow flows back through the host's
+// MCP step inside a Talon program flows back through the host's
 // expert system (executeCall → policy → observability → credentials).
-type handler struct{}
+type handler struct {
+	cfg config
+}
+
+// Configure parses the host-supplied config block. Empty configJSON is
+// valid — the plugin runs in workflow-only mode.
+func (h *handler) Configure(configJSON string) error {
+	if configJSON == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(configJSON), &h.cfg); err != nil {
+		return fmt.Errorf("talon-plugin: parse config: %w", err)
+	}
+	if h.cfg.DatalevinURL != "" {
+		slog.Info("talon-plugin: datalevin backend configured", "url", h.cfg.DatalevinURL)
+	} else {
+		slog.Info("talon-plugin: workflow-only mode (no datalevin_url configured)")
+	}
+	return nil
+}
 
 func (h *handler) Capabilities() plugin.CapabilitiesMsg {
 	return plugin.CapabilitiesMsg{
@@ -70,12 +100,10 @@ func (h *handler) ExecuteWithCallbacks(ctx context.Context, req plugin.Request, 
 
 	slog.Info("talon-plugin: execute_workflow",
 		"call_id", req.ID,
-		"workflow_len", len(src))
+		"workflow_len", len(src),
+		"datalevin", h.cfg.DatalevinURL != "")
 
-	result, err := talon.RunWorkflow(ctx, src,
-		talon.WithMCP(&talonCaller{host: host}),
-		talon.WithFilename("workflow:"+req.ID),
-	)
+	result, err := h.runTalon(ctx, src, req.ID, host)
 	if err != nil {
 		return plugin.Response{
 			CallID: req.ID,
@@ -89,6 +117,24 @@ func (h *handler) ExecuteWithCallbacks(ctx context.Context, req plugin.Request, 
 		Content:           content,
 		StructuredContent: structured,
 	}
+}
+
+// runTalon picks the right SDK entry point based on whether a Datalevin
+// backend is configured. With one, talon.Run handles the full language
+// (workflows + detect + queries + ML primitives). Without one we fall
+// back to talon.RunWorkflow which is faster but rejects detect-bearing
+// programs with talon.ErrRequiresFactStore — the LLM gets a clear error
+// pointing at the missing config rather than a panic.
+func (h *handler) runTalon(ctx context.Context, src, callID string, host plugin.HostCaller) (*talon.Result, error) {
+	opts := []talon.Option{
+		talon.WithMCP(&talonCaller{host: host}),
+		talon.WithFilename("workflow:" + callID),
+	}
+	if h.cfg.DatalevinURL != "" {
+		opts = append(opts, talon.WithDatalevinURL(h.cfg.DatalevinURL))
+		return talon.Run(ctx, src, opts...)
+	}
+	return talon.RunWorkflow(ctx, src, opts...)
 }
 
 // talonCaller bridges talon-language's MCPCaller interface (args
