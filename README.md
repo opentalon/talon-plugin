@@ -52,10 +52,10 @@ Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talo
 ## Build
 
 ```
-make build
+go build -o talon-plugin .
 ```
 
-Produces a `talon-plugin` binary. For production deployments, prefer `github:` auto-fetch (see Config above) — the host clones, builds, and pins the binary via `plugins.lock`, so operators don't manage release artifacts manually.
+For production deployments, prefer `github:` auto-fetch (see Config above) — the host clones, builds, and pins the binary via `plugins.lock`, so operators don't manage release artifacts manually.
 
 ## Scope today
 
@@ -69,7 +69,7 @@ Produces a `talon-plugin` binary. For production deployments, prefer `github:` a
 ## Tests
 
 ```
-make test
+go test -race -count=1 ./...
 ```
 
 Covers: workflow execution, step-result chaining (`step("name").result.field`), host-error propagation through the talon runtime, missing/unknown action handling, and a unary-path refusal guard (in case the host hasn't been upgraded to bidi).
