@@ -23,7 +23,7 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 
 ```yaml
 plugins:
-  talon-plugin:
+  talon:                                        # config-map key — also the reverse-proxy URL path
     enabled: true
     github: "opentalon/talon-plugin"
     ref: "master"
@@ -34,7 +34,7 @@ plugins:
       admin_token: "${TALON_PLUGIN_ADMIN_TOKEN}"  # bearer token guarding the admin HTTP API
 ```
 
-The host auto-fetches, builds, and pins the binary via `plugins.lock`. When `expose_http: true` is set on the entry, the host reverse-proxies `/{plugin-name}/*` from its webhook server to the plugin's HTTP listener.
+The host auto-fetches, builds, and pins the binary via `plugins.lock`. When `expose_http: true` is set on the entry, the host reverse-proxies `/{config-map-key}/*` from its webhook server to the plugin's HTTP listener — so the key `talon:` above gives you `/talon/*`. The capability name advertised to the LLM stays `talon-plugin` (`talon-plugin.execute_workflow`); operators pick any URL-friendly key they want.
 
 ## Admin HTTP API
 
@@ -53,7 +53,7 @@ Rules are filesystem-backed in `rules_dir` — one `<name>.talon` file per rule.
 Curl example (host's webhook at `https://opentalon.example.com`):
 
 ```
-curl -X POST https://opentalon.example.com/talon-plugin/rules \
+curl -X POST https://opentalon.example.com/talon/rules \
   -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"fleet_maintenance","source":"workflow \"x\" { ... }"}'
