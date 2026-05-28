@@ -24,10 +24,14 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 ```yaml
 plugins:
   talon-plugin:
-    plugin: ./talon-plugin
+    enabled: true
+    github: "opentalon/talon-plugin"
+    ref: "master"
     config:
       datalevin_url: "http://localhost:8898"   # optional; enables detect/query/ML programs
 ```
+
+The host auto-fetches, builds, and pins the binary via `plugins.lock`.
 
 Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talon.RunWorkflow` and rejects `detect`-bearing programs with a clear error pointing at the missing backend. Setting `datalevin_url` switches to `talon.Run` for the full language.
 
@@ -51,7 +55,7 @@ Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talo
 make build
 ```
 
-Produces a `talon-plugin` binary. Install it like any other OpenTalon plugin (point your `plugins:` entry at the binary path, or use `github:` auto-fetch).
+Produces a `talon-plugin` binary. For production deployments, prefer `github:` auto-fetch (see Config above) — the host clones, builds, and pins the binary via `plugins.lock`, so operators don't manage release artifacts manually.
 
 ## Scope today
 
