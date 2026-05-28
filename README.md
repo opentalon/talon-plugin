@@ -16,7 +16,24 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 ## Requirements
 
 - **OpenTalon host >= v0.0.18** — the bidi `ExecuteBidi` RPC and the `supports_callbacks` capability flag were added in that release.
-- The host plugin loader does the rest — no special config beyond installing the plugin binary.
+- **talon-language >= v0.2.0** — `pkg/talon.Run` + the `FactStore` interface.
+- For Datalevin-backed programs (`detect`, queries, ML primitives): a reachable [datalevin-server](https://github.com/opentalon/talon-language/tree/master/datalevin-server). Without one, the plugin still runs workflow-only programs.
+
+## Config
+
+```yaml
+plugins:
+  talon-plugin:
+    enabled: true
+    github: "opentalon/talon-plugin"
+    ref: "master"
+    config:
+      datalevin_url: "http://localhost:8898"   # optional; enables detect/query/ML programs
+```
+
+The host auto-fetches, builds, and pins the binary via `plugins.lock`.
+
+Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talon.RunWorkflow` and rejects `detect`-bearing programs with a clear error pointing at the missing backend. Setting `datalevin_url` switches to `talon.Run` for the full language.
 
 ## Spec
 
@@ -38,11 +55,16 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 make build
 ```
 
-Produces a `talon-plugin` binary. Install it like any other OpenTalon plugin (point your `plugins:` entry at the binary path, or use `github:` auto-fetch).
+Produces a `talon-plugin` binary. For production deployments, prefer `github:` auto-fetch (see Config above) — the host clones, builds, and pins the binary via `plugins.lock`, so operators don't manage release artifacts manually.
 
 ## Scope today
 
-- **Workflow blocks only.** Talon programs that use `detect` over a fact store need the Datalevin-backed entry point in `talon-language/pkg/talon`, which is a follow-up. Until then this plugin handles the ad-hoc batch case; preauthored EITL rules over fact stores arrive in a later release.
+- **Workflow blocks**: ad-hoc LLM-authored Talon workflows (`workflow "..." { step "..." { mcp ... } }`) run via `talon.RunWorkflow`. No backend dependency.
+- **Detect / query / ML primitives**: covered when `datalevin_url` is configured — programs flow through `talon.Run` against the Datalevin store.
+
+**Not yet shipped** (follow-up work in this repo):
+
+- A rules-directory loader exposing one advertised action per preauthored `.talon` rule file. Today only the generic `execute_workflow(workflow)` tool is exposed; rule authoring is a future surface that needs an SDK-side `WithContext(map[string]any)` option to bind LLM params into Talon's `context.*` lookups.
 
 ## Tests
 

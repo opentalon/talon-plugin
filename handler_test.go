@@ -30,6 +30,59 @@ func (s *stubHost) RunAction(_ context.Context, plugin_, action string, args map
 	return plugin.CallResult{Content: `{"ok":true}`}, nil
 }
 
+func TestConfigure_DefaultsToWorkflowOnly(t *testing.T) {
+	h := &handler{}
+	if err := h.Configure(""); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if h.cfg.DatalevinURL != "" {
+		t.Errorf("DatalevinURL should default to empty, got %q", h.cfg.DatalevinURL)
+	}
+}
+
+func TestConfigure_ParsesDatalevinURL(t *testing.T) {
+	h := &handler{}
+	if err := h.Configure(`{"datalevin_url":"http://dl.internal:8898"}`); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if h.cfg.DatalevinURL != "http://dl.internal:8898" {
+		t.Errorf("DatalevinURL: %q", h.cfg.DatalevinURL)
+	}
+}
+
+func TestConfigure_InvalidJSON(t *testing.T) {
+	h := &handler{}
+	if err := h.Configure(`{not json`); err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+}
+
+// TestExecuteWithCallbacks_DetectRejectedWithoutDatalevin verifies the
+// workflow-only fallback: with no datalevin_url configured, a program
+// containing a detect block surfaces a clear error pointing at the
+// missing config rather than panicking inside the executor.
+func TestExecuteWithCallbacks_DetectRejectedWithoutDatalevin(t *testing.T) {
+	src := `
+detect "Low stock" {
+  for records where type == "stock_item"
+    and attr "current_stock" <= attr "minimum_amount"
+  flag matching items
+  label "{item.name}: low"
+  priority HIGH
+}`
+	h := &handler{} // no DatalevinURL
+	resp := h.ExecuteWithCallbacks(context.Background(),
+		plugin.Request{ID: "c1", Action: "execute_workflow", Args: map[string]string{"workflow": src}},
+		&stubHost{},
+	)
+	if resp.Error == "" {
+		t.Fatal("expected error for detect program without datalevin_url")
+	}
+	if !strings.Contains(resp.Error, "FactStore") && !strings.Contains(resp.Error, "detect") {
+		t.Errorf("error should reference the missing FactStore: %q", resp.Error)
+	}
+}
+
 func TestCapabilities(t *testing.T) {
 	h := &handler{}
 	caps := h.Capabilities()
