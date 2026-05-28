@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"os"
+	"time"
 
 	"github.com/opentalon/opentalon/pkg/plugin"
 	"github.com/opentalon/talon-language/pkg/talon"
@@ -23,6 +26,19 @@ type config struct {
 	// via talon.RunWorkflow — detect-bearing programs return
 	// ErrRequiresFactStore from the SDK.
 	DatalevinURL string `json:"datalevin_url"`
+
+	// RulesDir is the filesystem path where preauthored Talon rules
+	// live (one .talon file per rule). The admin HTTP API reads and
+	// writes here; rules loaded at startup become advertised actions
+	// (the rules loader is a follow-up). Required when admin_token is
+	// set; otherwise the API can't store anything it accepts.
+	RulesDir string `json:"rules_dir"`
+
+	// AdminToken guards the admin HTTP API (rule CRUD + facts seed).
+	// Every request must carry `Authorization: Bearer <token>` with a
+	// matching value. Empty disables the admin API entirely — without
+	// a token there's no auth model, so we refuse to serve.
+	AdminToken string `json:"admin_token"`
 }
 
 // handler implements pkg/plugin.StreamingHandler. The plugin advertises
@@ -35,19 +51,65 @@ type handler struct {
 }
 
 // Configure parses the host-supplied config block. Empty configJSON is
-// valid — the plugin runs in workflow-only mode.
+// valid — the plugin runs in workflow-only mode. Side effect: starts
+// the admin HTTP server in a goroutine when both OPENTALON_HTTP_PORT
+// (set by the host's plugin loader) and admin_token (from this config)
+// are present. The server outlives Configure; it shuts down when the
+// process exits alongside the gRPC server.
 func (h *handler) Configure(configJSON string) error {
-	if configJSON == "" {
-		return nil
-	}
-	if err := json.Unmarshal([]byte(configJSON), &h.cfg); err != nil {
-		return fmt.Errorf("talon-plugin: parse config: %w", err)
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &h.cfg); err != nil {
+			return fmt.Errorf("talon-plugin: parse config: %w", err)
+		}
 	}
 	if h.cfg.DatalevinURL != "" {
 		slog.Info("talon-plugin: datalevin backend configured", "url", h.cfg.DatalevinURL)
 	} else {
 		slog.Info("talon-plugin: workflow-only mode (no datalevin_url configured)")
 	}
+
+	port := os.Getenv("OPENTALON_HTTP_PORT")
+	switch {
+	case port == "" && h.cfg.AdminToken != "":
+		// Operator gave us a token but no HTTP grant from the host —
+		// the API is unreachable. Loud warning so the misconfiguration
+		// is obvious, but don't error (gRPC still works).
+		slog.Warn("talon-plugin: admin_token set but OPENTALON_HTTP_PORT not granted; admin API disabled")
+	case port != "" && h.cfg.AdminToken == "":
+		// Inverse: host granted HTTP but no token. We refuse to serve
+		// an auth-less API on principle — there's no audience for
+		// uncredentialed mutation of rules and facts.
+		slog.Warn("talon-plugin: OPENTALON_HTTP_PORT granted but no admin_token in config; admin API refused (set admin_token to enable)")
+	case port != "" && h.cfg.AdminToken != "":
+		if err := h.startAdminServer(port); err != nil {
+			return fmt.Errorf("talon-plugin: admin server: %w", err)
+		}
+	}
+	return nil
+}
+
+// startAdminServer launches the management HTTP server in a goroutine.
+// Today exposes rule CRUD only; fact-store seeding follows once the
+// SDK adds a public FactStore constructor (single ~10-line PR).
+func (h *handler) startAdminServer(port string) error {
+	if h.cfg.RulesDir == "" {
+		return fmt.Errorf("rules_dir is required when admin_token is set")
+	}
+	admin := &adminServer{
+		token: h.cfg.AdminToken,
+		rules: &ruleStore{RootDir: h.cfg.RulesDir},
+	}
+	srv := &http.Server{
+		Addr:              "127.0.0.1:" + port,
+		Handler:           admin.routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		slog.Info("talon-plugin: admin server listening", "addr", srv.Addr, "rules_dir", h.cfg.RulesDir)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("talon-plugin: admin server", "error", err)
+		}
+	}()
 	return nil
 }
 

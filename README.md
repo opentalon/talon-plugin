@@ -27,11 +27,43 @@ plugins:
     enabled: true
     github: "opentalon/talon-plugin"
     ref: "master"
+    expose_http: true   # required only if admin_token is set (see below)
     config:
       datalevin_url: "http://localhost:8898"   # optional; enables detect/query/ML programs
+      rules_dir: "/etc/opentalon/talon-rules"  # required if admin_token is set
+      admin_token: "${TALON_PLUGIN_ADMIN_TOKEN}"  # bearer token guarding the admin HTTP API
 ```
 
-The host auto-fetches, builds, and pins the binary via `plugins.lock`.
+The host auto-fetches, builds, and pins the binary via `plugins.lock`. When `expose_http: true` is set on the entry, the host reverse-proxies `/{plugin-name}/*` from its webhook server to the plugin's HTTP listener.
+
+## Admin HTTP API
+
+When `admin_token` is set in the config block and the host has granted HTTP (`expose_http: true`), the plugin starts a management HTTP server on `OPENTALON_HTTP_PORT`. Every request requires `Authorization: Bearer <admin_token>`; missing or wrong tokens return `401`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/rules` | List all rule names. |
+| `POST` | `/rules` | Create a rule. Body: `{"name": "...", "source": "<Talon>"}`. Validates the source via the SDK before writing; invalid Talon → `400`. |
+| `GET` | `/rules/{name}` | Fetch the rule's Talon source (text/plain). |
+| `PUT` | `/rules/{name}` | Replace a rule. Body is the Talon source as text. |
+| `DELETE` | `/rules/{name}` | Remove a rule. |
+
+Rules are filesystem-backed in `rules_dir` — one `<name>.talon` file per rule. Names must match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$` so they can't escape the directory via `../` or land on awkward paths.
+
+Curl example (host's webhook at `https://opentalon.example.com`):
+
+```
+curl -X POST https://opentalon.example.com/talon-plugin/rules \
+  -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"fleet_maintenance","source":"workflow \"x\" { ... }"}'
+```
+
+Setting `admin_token` without `expose_http: true` (or vice versa) is a misconfiguration — the plugin logs a warning at startup and refuses to serve an auth-less API.
+
+### Not yet exposed
+
+`POST /facts/seed` (push facts into the Datalevin store via `talon.Seed`) follows once the talon-language SDK adds a public `FactStore` constructor — small follow-up PR. Rule execution against loaded rules (one advertised action per rule) follows after that.
 
 Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talon.RunWorkflow` and rejects `detect`-bearing programs with a clear error pointing at the missing backend. Setting `datalevin_url` switches to `talon.Run` for the full language.
 
