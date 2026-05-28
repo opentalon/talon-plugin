@@ -89,15 +89,22 @@ func (h *handler) Configure(configJSON string) error {
 }
 
 // startAdminServer launches the management HTTP server in a goroutine.
-// Today exposes rule CRUD only; fact-store seeding follows once the
-// SDK adds a public FactStore constructor (single ~10-line PR).
+// Wires the fact store from datalevin_url so /facts/* round-trips
+// against the same backend the LLM-driven detect rules use.
 func (h *handler) startAdminServer(port string) error {
 	if h.cfg.RulesDir == "" {
 		return fmt.Errorf("rules_dir is required when admin_token is set")
 	}
+	var facts talon.FactStore
+	if h.cfg.DatalevinURL != "" {
+		// Inline client today; swap for talon.NewDatalevinFactStore once
+		// talon-language v0.2.1 ships (PR opentalon/talon-language#45).
+		facts = newDatalevinClient(h.cfg.DatalevinURL)
+	}
 	admin := &adminServer{
 		token: h.cfg.AdminToken,
 		rules: &ruleStore{RootDir: h.cfg.RulesDir},
+		facts: facts,
 	}
 	srv := &http.Server{
 		Addr:              "127.0.0.1:" + port,

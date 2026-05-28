@@ -61,9 +61,48 @@ curl -X POST https://opentalon.example.com/talon/rules \
 
 Setting `admin_token` without `expose_http: true` (or vice versa) is a misconfiguration — the plugin logs a warning at startup and refuses to serve an auth-less API.
 
+### Facts API (one-at-a-time CRUD)
+
+When `datalevin_url` is configured, the admin server also exposes per-entity fact CRUD. Same bearer-token auth as `/rules`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/facts` | Add a fact. Body: `{"entity_id": <int>, "attrs": {"k1": v1, "k2": v2}}`. Issues a single `Transact` against the FactStore. |
+| `GET` | `/facts/{id}` | Read all `(attr, value)` pairs on an entity. Returns `{"entity_id": ..., "attrs": {...}}` or `404`. |
+| `PUT` | `/facts/{id}` | Patch attrs on an entity. Body: `{"attrs": {...}}`. Datalevin treats re-asserting an attribute as an update — no retract dance needed. |
+| `DELETE` | `/facts/{id}` | Retract the whole entity. |
+| `DELETE` | `/facts/{id}/{attr}` | Retract a single attribute (looks up current value, then issues `:db/retract`). Returns `404` if the attribute isn't set. |
+
+Curl examples:
+
+```
+# Add a stock item
+curl -X POST https://opentalon.example.com/talon/facts \
+  -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": 808, "attrs": {"name": "Cement 50kg", "current_stock": 12, "minimum_amount": 50}}'
+
+# Patch stock level
+curl -X PUT https://opentalon.example.com/talon/facts/808 \
+  -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"attrs": {"current_stock": 8}}'
+
+# Read current state
+curl https://opentalon.example.com/talon/facts/808 \
+  -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN"
+
+# Retract one attribute
+curl -X DELETE https://opentalon.example.com/talon/facts/808/current_stock \
+  -H "Authorization: Bearer $TALON_PLUGIN_ADMIN_TOKEN"
+```
+
+Without `datalevin_url`, every `/facts/*` request returns `503` — admins seeding facts and the LLM running detect rules share the same backend by construction, so a missing backend is a setup problem to surface rather than a silent no-op.
+
 ### Not yet exposed
 
-`POST /facts/seed` (push facts into the Datalevin store via `talon.Seed`) follows once the talon-language SDK adds a public `FactStore` constructor — small follow-up PR. Rule execution against loaded rules (one advertised action per rule) follows after that.
+- Bulk seed from a `.talon.test` source (`POST /facts/seed`) — straightforward follow-up using `talon.Seed`.
+- Rule execution as advertised actions (one Action per `.talon` file). Needs an SDK-side `WithContext(map[string]any)` option to bind LLM params into Talon's `context.*` lookups — separate talon-language PR.
 
 Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talon.RunWorkflow` and rejects `detect`-bearing programs with a clear error pointing at the missing backend. Setting `datalevin_url` switches to `talon.Run` for the full language.
 
