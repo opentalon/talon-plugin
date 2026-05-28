@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/opentalon/opentalon v0.0.18
-	github.com/opentalon/talon-language v0.2.0
+	github.com/opentalon/talon-language v0.2.1
 )
 
 require (
