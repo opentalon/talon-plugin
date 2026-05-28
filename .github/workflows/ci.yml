@@ -18,10 +18,10 @@ jobs:
           go-version: "1.25"
 
       - name: golangci-lint
-        # v2.x is built with Go 1.25+ — required because go.mod declares
-        # `go 1.25`. The action's `version: latest` resolves to v1.x as of
-        # writing, which is built with Go 1.24 and rejects the newer go.mod.
-        uses: golangci/golangci-lint-action@v6
+        # golangci-lint v2.x is built with Go 1.25+ — required because
+        # go.mod declares `go 1.25`. golangci-lint-action@v7 is the
+        # minimum that supports v2; v6 hard-rejects v2 version strings.
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.7.2
           verify: false
