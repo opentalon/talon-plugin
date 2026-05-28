@@ -86,7 +86,7 @@ detect "Low stock" {
 func TestCapabilities(t *testing.T) {
 	h := &handler{}
 	caps := h.Capabilities()
-	if caps.Name != "talon-plugin" {
+	if caps.Name != "talon" {
 		t.Errorf("name: %q", caps.Name)
 	}
 	if !caps.SupportsCallbacks {

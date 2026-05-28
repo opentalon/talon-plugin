@@ -6,7 +6,7 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 
 ## How it works
 
-1. The LLM sees the `talon-plugin.execute_workflow(workflow)` tool plus a system-prompt addition explaining the Talon DSL.
+1. The LLM sees the `talon.execute_workflow(workflow)` tool plus a system-prompt addition explaining the Talon DSL.
 2. For a batch request ("delete all Test items"), the LLM emits a single tool call whose argument is a Talon `workflow "..." { step "..." { mcp "..." "..." { ... } } }` block.
 3. The host dispatches the call to this plugin over the existing plugin gRPC connection using **bidirectional streaming** (`ExecuteBidi`) — the same Unix socket the host already uses to call the plugin, no new transport.
 4. The plugin compiles the workflow via [`talon-language/pkg/talon.RunWorkflow`](https://github.com/opentalon/talon-language/tree/master/pkg/talon) and runs it.
@@ -23,7 +23,7 @@ OpenTalon plugin that executes [Talon](https://github.com/opentalon/talon-langua
 
 ```yaml
 plugins:
-  talon-plugin:
+  talon:                                 # config-map key — also the LLM tool prefix and reverse-proxy path
     enabled: true
     github: "opentalon/talon-plugin"
     ref: "master"
@@ -31,7 +31,7 @@ plugins:
       datalevin_url: "http://localhost:8898"   # optional; enables detect/query/ML programs
 ```
 
-The host auto-fetches, builds, and pins the binary via `plugins.lock`.
+The config-map key (`talon`) is what the host uses for the reverse-proxy path (`/talon/*`) and for tool registration. The plugin's capability name is also `talon`, so the LLM sees `talon.execute_workflow`. The host auto-fetches, builds, and pins the binary via `plugins.lock`.
 
 Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talon.RunWorkflow` and rejects `detect`-bearing programs with a clear error pointing at the missing backend. Setting `datalevin_url` switches to `talon.Run` for the full language.
 
@@ -39,8 +39,10 @@ Workflow-only mode (no `datalevin_url`) is the default — the plugin runs `talo
 
 | Item | Value |
 |------|--------|
-| **Plugin ID** | `talon-plugin` |
-| **Action** | `execute_workflow` |
+| **Capability name** | `talon` |
+| **LLM tool** | `talon.execute_workflow` |
+| **Reverse-proxy path** | `/talon/*` (when operator uses `talon:` as the config-map key) |
+| **Repo / binary** | `opentalon/talon-plugin` |
 | **Streaming** | Yes (`supports_callbacks: true` → host dispatches over `ExecuteBidi`) |
 
 **Parameters**
