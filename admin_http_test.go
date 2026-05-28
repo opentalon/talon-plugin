@@ -51,21 +51,21 @@ func TestAdmin_AuthRequired(t *testing.T) {
 
 	// No token → 401.
 	resp := do(t, http.MethodGet, srv.URL+"/rules", "", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("no token: status %d, want 401", resp.StatusCode)
 	}
 
 	// Wrong token → 401.
 	resp = do(t, http.MethodGet, srv.URL+"/rules", "nope", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("wrong token: status %d, want 401", resp.StatusCode)
 	}
 
 	// Right token → 200.
 	resp = do(t, http.MethodGet, srv.URL+"/rules", "secret", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("right token: status %d, want 200", resp.StatusCode)
 	}
@@ -75,7 +75,7 @@ func TestAdmin_DisabledWithoutToken(t *testing.T) {
 	// Empty server token = no auth model = refuse to serve.
 	srv, _ := newTestServer(t, "")
 	resp := do(t, http.MethodGet, srv.URL+"/rules", "anything", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", resp.StatusCode)
 	}
@@ -96,7 +96,7 @@ workflow "test" {
 	// POST /rules creates.
 	body, _ := json.Marshal(map[string]string{"name": "fleet", "source": src})
 	resp := do(t, http.MethodPost, srv.URL+"/rules", "tok", bytes.NewReader(body))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("POST: status %d, body %s", resp.StatusCode, b)
@@ -107,7 +107,7 @@ workflow "test" {
 
 	// GET /rules lists.
 	resp = do(t, http.MethodGet, srv.URL+"/rules", "tok", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var listed struct {
 		Rules []string `json:"rules"`
 	}
@@ -118,7 +118,7 @@ workflow "test" {
 
 	// GET /rules/{name} reads.
 	resp = do(t, http.MethodGet, srv.URL+"/rules/fleet", "tok", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	got, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(got), `workflow "test"`) {
 		t.Errorf("GET content: %q", got)
@@ -127,7 +127,7 @@ workflow "test" {
 	// PUT /rules/{name} replaces.
 	newSrc := strings.Replace(src, "test", "test2", 1)
 	resp = do(t, http.MethodPut, srv.URL+"/rules/fleet", "tok", strings.NewReader(newSrc))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("PUT: status %d, body %s", resp.StatusCode, b)
@@ -135,7 +135,7 @@ workflow "test" {
 
 	// DELETE removes.
 	resp = do(t, http.MethodDelete, srv.URL+"/rules/fleet", "tok", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("DELETE: status %d, want 204", resp.StatusCode)
 	}
@@ -148,7 +148,7 @@ func TestAdmin_RejectsInvalidTalon(t *testing.T) {
 	srv, _ := newTestServer(t, "tok")
 	body, _ := json.Marshal(map[string]string{"name": "broken", "source": "workflow \"x\" { step \"s\" {"})
 	resp := do(t, http.MethodPost, srv.URL+"/rules", "tok", bytes.NewReader(body))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		b, _ := io.ReadAll(resp.Body)
 		t.Errorf("status %d, want 400; body=%s", resp.StatusCode, b)
@@ -170,7 +170,7 @@ detect "Low stock" {
 }`
 	body, _ := json.Marshal(map[string]string{"name": "low_stock", "source": detectSrc})
 	resp := do(t, http.MethodPost, srv.URL+"/rules", "tok", bytes.NewReader(body))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)
 		t.Errorf("status %d, want 201; body=%s", resp.StatusCode, b)
@@ -181,7 +181,7 @@ func TestAdmin_InvalidRuleName(t *testing.T) {
 	srv, _ := newTestServer(t, "tok")
 	body, _ := json.Marshal(map[string]string{"name": "../escape", "source": "workflow \"x\" {}"})
 	resp := do(t, http.MethodPost, srv.URL+"/rules", "tok", bytes.NewReader(body))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status %d, want 400", resp.StatusCode)
 	}
@@ -190,7 +190,7 @@ func TestAdmin_InvalidRuleName(t *testing.T) {
 func TestAdmin_NotFound(t *testing.T) {
 	srv, _ := newTestServer(t, "tok")
 	resp := do(t, http.MethodGet, srv.URL+"/rules/missing", "tok", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)
 	}
@@ -199,7 +199,7 @@ func TestAdmin_NotFound(t *testing.T) {
 func TestAdmin_MethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t, "tok")
 	resp := do(t, http.MethodPatch, srv.URL+"/rules", "tok", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status %d, want 405", resp.StatusCode)
 	}
