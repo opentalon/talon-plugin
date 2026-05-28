@@ -17,7 +17,7 @@ import (
 // interim copy of internal/datalevin/client.go from talon-language —
 // the SDK doesn't yet export a public constructor for a long-lived
 // FactStore (only WithDatalevinURL inside Run/Seed). Once
-// talon-language v0.2.1 ships with talon.NewDatalevinFactStore, this
+// talon-language v0.2.1 ships with talon.NewFactStore, this
 // type goes away and `factStoreFromURL` returns that directly.
 //
 // See: https://github.com/opentalon/talon-language/pull/45
@@ -34,7 +34,7 @@ func newDatalevinClient(baseURL string) *datalevinClient {
 }
 
 // Compile-time guard: when v0.2.1 lands, this assertion holds against
-// talon.NewDatalevinFactStore's return value as well, so the swap
+// talon.NewFactStore's return value as well, so the swap
 // at the call site is purely typographical.
 var _ talon.FactStore = (*datalevinClient)(nil)
 

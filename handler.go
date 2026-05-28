@@ -97,7 +97,7 @@ func (h *handler) startAdminServer(port string) error {
 	}
 	var facts talon.FactStore
 	if h.cfg.DatalevinURL != "" {
-		// Inline client today; swap for talon.NewDatalevinFactStore once
+		// Inline client today; swap for talon.NewFactStore once
 		// talon-language v0.2.1 ships (PR opentalon/talon-language#45).
 		facts = newDatalevinClient(h.cfg.DatalevinURL)
 	}
