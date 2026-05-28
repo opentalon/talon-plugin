@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [master, main]
+  # Trigger on every PR, regardless of target branch — stacked PRs
+  # (e.g. feature branch → feature branch) need CI too.
   pull_request:
-    branches: [master, main]
 
 jobs:
   lint:
